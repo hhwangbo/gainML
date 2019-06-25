@@ -1,0 +1,150 @@
+---
+title: "gainML: Preparation and Implementation"
+author: "Hoon Hwangbo"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Implementation}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+This documents illustrates how to prepare data, how to implement the package, and what the resulting objects are.
+
+## Data preparation
+
+For the analysis, this package requires to use at least three turbine datasets (dataframes); one for each of reference turbine, baseline control turbine, and neutral control turbine.
+
+* All dataframes must have at least two data columns, one for timestamp and another for turbine id, the column numbers can be set through `col.time` and `col.turb`.
+* Other than the two columns, a dataset of a reference turbine must include wind direction, power output, and air density in sequence.
+* Other than the two columns, a dataset of a control turbine (both baseline and neutral) must include wind speed and power output in sequence.
+
+
+## Implementation
+
+To use the package, a user first needs to load the package (attach the package to the current R environment).
+
+```
+library(gainML)
+```
+
+### Point estimation of gain
+Once the package is loaded, a user can (i) simply run a single function `analyze.gain` or (ii) choose to run multiple functions in sequence (`analyze.gain` basically runs these functions in sequence).
+
+- When using `analyze.gain`:
+
+    ```
+    # Analyze Gain in a Single Step
+    point.res <- analyze.gain(df.ref, df.ctrb, df.ctrn, p1.beg = '2014-10-24',
+                              p1.end = '2015-10-25', p2.beg = '2015-10-25',
+                              p2.end = '2016-10-26', ratedPW = 1000, AEP = 300000,
+                              pw.freq = pw.freq)
+                        
+    point.res$gain.res$gain   #Provides the point estimate of gain
+    ```
+  
+- When using multiple functions:
+
+    ```
+    # Prepare Data
+    data <- arrange.data(df.ref, df.ctrb, df.ctrn, p1.beg = '2014-10-24',
+                         p1.end = '2015-10-25', p2.beg = '2015-10-25', p2.end = '2016-10-26')
+                         
+    # Period 1 Analysis
+    p1.res <- analyze.p1(data$train, data$test, ratedPW = 1000)
+    
+    # Period 2 Analysis
+    p2.res <- analyze.p2(data$per1, data$per2, p1.res$opt.cov)
+    
+    # Quantify gain
+    gain.res <- quantify.gain(p1.res, p2.res, ratedPW = 1000, AEP = 300000, pw.freq = pw.freq)
+    
+    gain.res$gain   #Provides the point estimate of gain
+    ```
+
+- When using `analyze.gain` for **free sector analysis**:
+
+    ```
+    free.sec <- list(c(310, 50), c(150, 260))   #Defines the free sectors
+    
+    # Analyze Gain in a Single Step
+    point.res <- analyze.gain(df.ref, df.ctrb, df.ctrn, p1.beg = '2014-10-24',
+                              p1.end = '2015-10-25', p2.beg = '2015-10-25',
+                              p2.end = '2016-10-26', ratedPW = 1000, AEP = 300000,
+                              pw.freq = pw.freq, free.sec = free.sec)
+    ```
+    
+    **Note**: `free.sec` is a list of vectors defining free sectors. Each vector in the list has two scalars: one for starting direction and another for ending direction, ordered clockwise.
+    
+For the details about the functions, please refer to the package manual (in a `pdf` format).
+
+### Interval estimation of gain (by using bootstrap)
+Once the package is loaded, a user needs to run a series of functions as illustrated below.
+
+- Full sector analysis:
+
+    ```
+    # Prepare Data
+    data <- arrange.data(df.ref, df.ctrb, df.ctrn, p1.beg = '2014-10-24',
+                         p1.end = '2015-10-25', p2.beg = '2015-10-25', p2.end = '2016-10-26')
+    
+    # Period 1 Analysis
+    p1.res <- analyze.p1(data$train, data$test, ratedPW = 1000)
+    
+    # Gain Analysis by Using Bootstrap
+    n.rep <- 10   #Defines the number of replications.
+    interval.res <- bootstrap.gain(df.ref, df.ctrb, df.ctrn, opt.cov = p1.res$opt.cov,
+                                   n.rep = n.rep, p1.beg = '2014-10-24',
+                                   p1.end = '2015-10-25', p2.beg = '2015-10-25',
+                                   p2.end = '2016-10-26', ratedPW = 1000, AEP = 300000,
+                                   pw.freq = pw.freq, write.path = NULL)
+    
+    sapply(res, function(ls) ls$gain.res$gainCurve)   #Provides 10 gain curves
+    sapply(res, function(ls) ls$gain.res$gain)        #Provides 10 gain values
+    ```
+
+- Free sector analysis:
+
+    ```
+    free.sec <- list(c(310, 50), c(150, 260))   #Defines the free sectors
+    
+    # Prepare Data
+    data <- arrange.data(df.ref, df.ctrb, df.ctrn, p1.beg = '2014-10-24',
+                         p1.end = '2015-10-25', p2.beg = '2015-10-25',
+                         p2.end = '2016-10-26', free.sec = free.sec)
+    
+    # Period 1 Analysis
+    p1.res <- analyze.p1(data$train, data$test, ratedPW = 1000)
+    
+    # Gain Analysis by Using Bootstrap
+    n.rep <- 10   #Defines the number of replications.
+    interval.res <- bootstrap.gain(df.ref, df.ctrb, df.ctrn, opt.cov = p1.res$opt.cov,
+                                   n.rep = n.rep, free.sec = free.sec, p1.beg = '2014-10-24',
+                                   p1.end = '2015-10-25', p2.beg = '2015-10-25',
+                                   p2.end = '2016-10-26', ratedPW = 1000, AEP = 300000,
+                                   pw.freq = pw.freq, write.path = NULL)
+    
+    sapply(res, function(ls) ls$gain.res$gainCurve)   #Provides 10 gain curves
+    sapply(res, function(ls) ls$gain.res$gain)        #Provides 10 gain values
+    ```
+    
+    **Note**: The only difference is to define `free.sec` and set it as an argument when using `arrange.data` and `bootstrap.gain` functions. 
+
+### Remarks
+- Period 1 analysis will take a significant amount of time, so its progress will be indicated in the R console.
+
+- A user needs to read and store the long term frequency data manually. To see a desired format, please refer to the `pw.freq` part in the manual or, in the R console, run
+
+    ```
+    head(pw.freq)
+    ```
+
+## Resulting Objects
+
+The analysis outcome can be obtained from the `quantify.gain` function (the return from `analyze.gain` and `bootstrap.gain` will also include this outcome). The outcome includes:
+
+- Gain quantification: initial effect, offset, and gain with offset adjustment.
+
+- Bin-wise curve: effect curve, offset curve, and gain curve corresponding to each of the above gain quantification, respectively.
+
+Please refer to the package manual for more details.
