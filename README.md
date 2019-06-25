@@ -18,5 +18,5 @@ install.packages("gainML")
 
 ## Example
 
-Examples are provided in the package manual and the vignette, so please
+Examples are given in the package manual and the vignette, so please
 refer to them.
